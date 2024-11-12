@@ -24,7 +24,7 @@ Here is a screenshot from one of the output videos:
 ## Requirements
 * python3.8
 * ultralytics
-* pytroch
+* pytorch
 * pandas
 * numpy 
 * opencv

@@ -4,4 +4,4 @@ __pycache__
 *.vscode
 myvenv
 *.venv
-yolo/input_videos/
+yolo\input_videos
