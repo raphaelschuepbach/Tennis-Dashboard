@@ -1,6 +1,6 @@
 from utils import (read_video, 
                    save_video,
-                   measure_distance,
+                  measure_distance,
                    draw_player_stats,
                    convert_pixel_distance_to_meters
                    )
@@ -38,7 +38,7 @@ def main():
     court_line_detector = CourtLineDetector(court_model_path)
     court_keypoints = court_line_detector.predict(video_frames[0])
 
-    # choose players
+    # Choose players
     player_detections = player_tracker.choose_and_filter_players(court_keypoints, player_detections)
 
     # MiniCourt
@@ -51,6 +51,7 @@ def main():
     player_mini_court_detections, ball_mini_court_detections = mini_court.convert_bounding_boxes_to_mini_court_coordinates(player_detections, 
                                                                                                           ball_detections,
                                                                                                           court_keypoints)
+
 
     player_stats_data = [{
         'frame_num':0,
@@ -146,7 +147,7 @@ def main():
     for i, frame in enumerate(output_video_frames):
         cv2.putText(frame, f"Frame: {i}",(10,30),cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    save_video(output_video_frames, "yolo/output_videos/output_video.avi")
+    save_video(output_video_frames, "yolo/output_videos/output_video_1.avi")
 
 if __name__ == "__main__":
     main()
