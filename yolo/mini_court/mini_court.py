@@ -1,8 +1,8 @@
 import cv2
+import constants
 import numpy as np
 import sys
 sys.path.append('../')
-import constants
 from utils import (
     convert_meters_to_pixel_distance,
     convert_pixel_distance_to_meters,
@@ -240,7 +240,18 @@ class MiniCourt():
             output_player_boxes.append(output_player_bboxes_dict)
 
         return output_player_boxes , output_ball_boxes
-    
+
+    def get_unique_player_ids(player_boxes):
+        """Retrieve all unique player IDs from the player_boxes dictionary."""
+        unique_ids = set()  # Use a set to ensure unique IDs
+        for frame_data in player_boxes.values():  # Iterate over each frame's player data
+            unique_ids.update(frame_data.keys())  # Add player IDs for each frame
+        return list(unique_ids)  # Convert to list for easier handling
+
+
+
+
+
     def draw_points_on_mini_court(self,frames,postions, color=(0,255,0)):
         for frame_num, frame in enumerate(frames):
             for _, position in postions[frame_num].items():
