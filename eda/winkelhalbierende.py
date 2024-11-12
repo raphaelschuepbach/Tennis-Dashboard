@@ -19,7 +19,7 @@ def calculate_intersection_point(A, B, C):
     Dy = (B[1] * AC + C[1] * AB) / (AC + AB)
     return (Dx, Dy)
 
-def winkelhalbierende(object_id_1, object_id_2, speed):
+def winkelhalbierende(object_id_1, object_id_2):
     """
     Bestimmt den Schnittpunkt der Winkelhalbierenden basierend auf der Position von object_id_2.
     
@@ -30,22 +30,20 @@ def winkelhalbierende(object_id_1, object_id_2, speed):
     Rückgabewert:
     Tupel (Dx, Dy): Koordinaten des Schnittpunkts auf BC, oder None, wenn die Bedingungen nicht erfüllt sind.
     """
-    if speed < 2:
-        A = (position_X(object_id_1), position_Y(object_id_1))
+    A = (position_X(object_id_1), position_Y(object_id_1))
         
-        if -1.485 <= position_X(object_id_2) <= 1.485:
-            B, C = (-5.485, -11.89), (5.485, -11.89)
-            return calculate_intersection_point(A, B, C)
+    if -1.485 <= position_X(object_id_2) <= 1.485:
+        B, C = (-5.485, -11.89), (5.485, -11.89)
+        return calculate_intersection_point(A, B, C)
         
-        elif position_X(object_id_2) < -1.485:
-            B, C = (-5.485, -11.89), (4.115, -6.4)
-            return calculate_intersection_point(A, B, C)
+    elif position_X(object_id_2) < -1.485:
+        B, C = (-5.485, -11.89), (4.115, -6.4)
+        return calculate_intersection_point(A, B, C)
         
-        elif position_X(object_id_2) > 1.485:
-            B, C = (-4.115, -6.4), (5.485, -11.89)
-            return calculate_intersection_point(A, B, C)
-    
-    return None
+    elif position_X(object_id_2) > 1.485:
+        B, C = (-4.115, -6.4), (5.485, -11.89)
+        return calculate_intersection_point(A, B, C)
+
 
         
             
