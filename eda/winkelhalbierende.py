@@ -1,55 +1,71 @@
-import math
+import streamlit as st
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import math
+
+# Daten laden
+player_positions = pd.read_csv("csv.csv")  # Datei mit Spielerpositionen
+# Annahme: Spalten sind 'frame', 'Object.ID', 'Transformed.X', 'Transformed.Y', 'Speed'
+frame_rate = 30  # Frames pro Sekunde
 
 def calculate_intersection_point(A, B, C):
     """
     Berechnet den Schnittpunkt D auf der Seite BC, wo die Winkelhalbierende vom Punkt A auf BC trifft.
-    
-    Parameter:
-    A, B, C: Tupel, die die Koordinaten der Punkte A, B und C in einem Dreieck darstellen.
-    
-    Rückgabewert:
-    Tupel (Dx, Dy): Koordinaten des Schnittpunkts auf BC.
     """
-    # Berechne die Längen der Seiten AB und AC
     AB = math.sqrt((B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2)
     AC = math.sqrt((C[0] - A[0]) ** 2 + (C[1] - A[1]) ** 2)
-    
-    # Berechne die Koordinaten des Schnittpunkts D
     Dx = (B[0] * AC + C[0] * AB) / (AC + AB)
     Dy = (B[1] * AC + C[1] * AB) / (AC + AB)
     return (Dx, Dy)
 
-def visualize_winkelhalbierende(object_id_1, object_id_2, position_X, position_Y):
+def visualize_winkelhalbierende_with_players(time, player_positions):
     """
-    Visualisiert die Winkelhalbierende und markiert Bereiche, in denen ein Spieler optimal stehen sollte.
-    
-    Parameter:
-    object_id_1, object_id_2: Identifikatoren für die Objekte.
-    position_X, position_Y: Funktionen oder Daten, die die X- und Y-Koordinaten der Objekte zurückgeben.
-    
-    Rückgabewert:
-    Grafik mit Winkelhalbierende und farbigen Bereichen.
+    Visualisiert die Winkelhalbierende, Spielerpositionen und das Tennisfeld.
     """
-    # Punkt A (Spieler 1)
-    A = (position_X(object_id_1), position_Y(object_id_1))
-    
-    # Bestimme die Position von Spieler 2
-    if -1.485 <= position_X(object_id_2) <= 1.485:
-        B, C = (-5.485, -11.89), (5.485, -11.89)
-    elif position_X(object_id_2) < -1.485:
-        B, C = (-5.485, -11.89), (4.115, -6.4)
-    elif position_X(object_id_2) > 1.485:
-        B, C = (-4.115, -6.4), (5.485, -11.89)
-    else:
-        raise ValueError("Ungültige Position von Spieler 2")
+    # Zeit in Frame umrechnen
+    frame = int(time * frame_rate)
+
+    # Filter die Spielerpositionen für den gegebenen Frame
+    player_1 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 1)]
+    player_2 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 2)]
+
+    if player_1.empty or player_2.empty:
+        st.warning(f"Keine Positionen für Spieler in Frame {frame} gefunden.")
+        return None
+
+    A = (player_1["Transformed.X"].iloc[0], player_1["Transformed.Y"].iloc[0])
+    player_2_pos = (player_2["Transformed.X"].iloc[0], player_2["Transformed.Y"].iloc[0])
+
+    # Punkte B und C (statisch für das Tennisfeld)
+    B, C = (-5.485, 11.89), (5.485, 11.89)
 
     # Berechne den Punkt auf der Winkelhalbierenden
     D = calculate_intersection_point(A, B, C)
 
     # Erstellen der Grafik
-    fig, ax = plt.subplots(figsize=(10, 7))
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Tennisfeld zeichnen
+    court_width = 8.23
+    court_length = 23.77
+    service_line_dist = 6.4
+    net_position = 0
+
+    # Außenlinien
+    ax.add_patch(patches.Rectangle((-court_width / 2, -court_length / 2),
+                                   court_width, court_length,
+                                   fill=False, edgecolor="black", lw=2))
+    
+    # Netz
+    ax.plot([-court_width / 2, court_width / 2], [net_position, net_position], color='black', lw=2)
+    
+    # Aufschlaglinien
+    ax.plot([-court_width / 2, court_width / 2], [net_position + service_line_dist, net_position + service_line_dist], color='black', lw=1)
+    ax.plot([-court_width / 2, court_width / 2], [net_position - service_line_dist, net_position - service_line_dist], color='black', lw=1)
+    
+    # Mittellinie
+    ax.plot([0, 0], [net_position - service_line_dist, net_position + service_line_dist], color='black', lw=1)
 
     # Zeichne das Dreieck
     ax.plot([A[0], B[0]], [A[1], B[1]], 'b--', label="Seite AB")
@@ -62,40 +78,40 @@ def visualize_winkelhalbierende(object_id_1, object_id_2, position_X, position_Y
     # Zeichne den Punkt auf der Winkelhalbierenden
     ax.scatter(D[0], D[1], color='red', label="Schnittpunkt D", zorder=5)
 
-    # Färbe die Bereiche
-    # Grün: optimaler Bereich
-    green_area = patches.Polygon([(B[0], B[1]), (C[0], C[1]), (0, -5)], closed=True, color='green', alpha=0.3)
+    # Spielerpositionen
+    ax.scatter(A[0], A[1], color='blue', label="Spieler 1 (Punkt A)", zorder=5)
+    ax.scatter(player_2_pos[0], player_2_pos[1], color='orange', label="Spieler 2", zorder=5)
+
+    # Färbe die Bereiche entlang der X-Achse (basierend auf D)
+    green_area = patches.Rectangle((D[0] - 2, 11.89 - 1.5), 4, 1.5, color='green', alpha=0.3)
+    yellow_area_left = patches.Rectangle((D[0] - 3, 11.89 - 1.5), 1, 1.5, color='yellow', alpha=0.3)
+    yellow_area_right = patches.Rectangle((D[0] + 2, 11.89 - 1.5), 1, 1.5, color='yellow', alpha=0.3)
+    red_area_left = patches.Rectangle((D[0] - 5, 11.89 - 1.5), 2, 1.5, color='red', alpha=0.3)
+    red_area_right = patches.Rectangle((D[0] + 3, 11.89 - 1.5), 2, 1.5, color='red', alpha=0.3)
+    
     ax.add_patch(green_area)
-
-    # Gelb: akzeptabler Bereich
-    yellow_area = patches.Polygon([(B[0] - 1, B[1] + 1), (C[0] + 1, C[1] + 1), (0, -3)], closed=True, color='yellow', alpha=0.3)
-    ax.add_patch(yellow_area)
-
-    # Rot: nicht optimaler Bereich
-    red_area = patches.Polygon([(B[0] - 2, B[1] + 2), (C[0] + 2, C[1] + 2), (0, -1)], closed=True, color='red', alpha=0.3)
-    ax.add_patch(red_area)
-
-    # Markiere die Punkte
-    ax.scatter(A[0], A[1], color='blue', label="Punkt A (Spieler 1)", zorder=5)
-    ax.scatter(B[0], B[1], color='purple', label="Punkt B")
-    ax.scatter(C[0], C[1], color='purple', label="Punkt C")
+    ax.add_patch(yellow_area_left)
+    ax.add_patch(yellow_area_right)
+    ax.add_patch(red_area_left)
+    ax.add_patch(red_area_right)
 
     # Achsenbegrenzung und Titel
-    ax.set_xlim(-10, 10)
-    ax.set_ylim(-15, 5)
-    ax.set_title("Winkelhalbierende mit optimalen Bereichen")
+    ax.set_xlim(-court_width, court_width)
+    ax.set_ylim(-court_length / 2, court_length / 2)
+    ax.set_title(f"Winkelhalbierende und Spielerpositionen bei t = {time}s")
     ax.set_xlabel("X-Position (m)")
     ax.set_ylabel("Y-Position (m)")
     ax.legend()
     plt.grid()
-    plt.show()
+    return fig
 
-# Beispiel: Funktionen für Positionen
-def position_X(obj_id):
-    return -2 if obj_id == 1 else 0
+# Streamlit App
+st.title("Tennis Analyse mit Spielerpositionen")
 
-def position_Y(obj_id):
-    return 0 if obj_id == 1 else -12
+# Slider für Zeit
+time = st.slider("Zeit (in Sekunden):", min_value=0, max_value=10, step=1)
 
-# Visualisierung aufrufen
-visualize_winkelhalbierende(1, 2, position_X, position_Y)
+# Visualisierung der Spielerpositionen und Winkelhalbierenden
+fig = visualize_winkelhalbierende_with_players(time, player_positions)
+if fig:
+    st.pyplot(fig)
