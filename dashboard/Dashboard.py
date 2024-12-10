@@ -111,7 +111,7 @@ def combined_heatmap(data):
     cmap2 = sns.color_palette("Blues", as_cmap=True)  # Spieler 1
 
     for obj_id, cmap in zip(data['Object.ID'].unique(), [cmap1, cmap2]):  # Reihenfolge getauscht
-        subset = data[data['Object.ID'] == obj_id]
+        subset = data[(data['Object.ID'] == obj_id) & (data['Spiel läuft'] == 'Ja')]
         sns.kdeplot(data=subset, x='Transformed.X', y='Transformed.Y', cmap=cmap, fill=True, alpha=0.7, ax=ax, label=f"Spieler {obj_id}")
 
     ax.set_xlim(-court_width, court_width)
