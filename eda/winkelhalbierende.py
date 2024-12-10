@@ -5,8 +5,7 @@ import matplotlib.patches as patches
 import math
 
 # Daten laden
-player_positions = pd.read_csv("csv.csv")  # Datei mit Spielerpositionen
-# Annahme: Spalten sind 'frame', 'Object.ID', 'Transformed.X', 'Transformed.Y', 'Speed'
+player_positions = pd.read_csv("csv.csv")
 frame_rate = 30  # Frames pro Sekunde
 
 def calculate_intersection_point(A, B, C):
@@ -27,8 +26,8 @@ def visualize_winkelhalbierende_with_players(time, player_positions):
     frame = int(time * frame_rate)
 
     # Filter die Spielerpositionen für den gegebenen Frame
-    player_1 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 1)]
-    player_2 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 2)]
+    player_1 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 0)]
+    player_2 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 1)]
 
     if player_1.empty or player_2.empty:
         st.warning(f"Keine Positionen für Spieler in Frame {frame} gefunden.")

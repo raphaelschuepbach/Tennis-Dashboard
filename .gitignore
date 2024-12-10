@@ -5,3 +5,4 @@ __pycache__
 myvenv
 *.venv
 yolo\input_videos
+dashboard/static/match.mp4
