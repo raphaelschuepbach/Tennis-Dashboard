@@ -205,7 +205,7 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     current_shot = shots.iloc[shot_index]
     frame = current_shot["Frame"]
     object_id = current_shot["Object.ID"]  # Der schlagende Spieler
-    opponent_id = 1 - object_id  # Der Gegner
+    opponent_id = 1 - object_id  # Der Gegner (umgekehrt)
 
     # Spieler- und Gegnerdaten für den aktuellen Frame
     player = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == object_id)]
@@ -215,7 +215,7 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
         st.error("Keine gültigen Positionen für den aktuellen Schlag gefunden.")
         return None
 
-    # Positionen
+    # Positionen des schlagenden Spielers und des Gegners
     A = (player["Transformed.X"].iloc[0], player["Transformed.Y"].iloc[0])  # Spieler
     B_opponent = (opponent["Transformed.X"].iloc[0], opponent["Transformed.Y"].iloc[0])  # Gegner
 
@@ -289,6 +289,7 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     plt.xlim(-court_width / 2 - 3, court_width / 2 + 3)
     plt.legend()
     return fig
+
 
 
 # Streamlit App
