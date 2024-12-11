@@ -123,117 +123,178 @@ def combined_heatmap(data):
     plt.axis('off')
     return fig
 
-
-def calculate_intersection_point(A, B, C):
+def plot_speed_per_game(data, game, player_ids, figsize=(10, 8 )):
     """
-    Berechnet den Schnittpunkt D auf der Seite BC, wo die Winkelhalbierende vom Punkt A auf BC trifft.
-    """
-    AB = math.sqrt((B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2)
-    AC = math.sqrt((C[0] - A[0]) ** 2 + (C[1] - A[1]) ** 2)
-    Dx = (B[0] * AC + C[0] * AB) / (AC + AB)
-    Dy = (B[1] * AC + C[1] * AB) / (AC + AB)
-    return (Dx, Dy)
+    Erstellt Geschwindigkeit-Diagramme für alle angegebenen Spieler untereinander.
 
-def visualize_winkelhalbierende_with_players(time, player_positions):
-    """
-    Visualisiert die Winkelhalbierende, Spielerpositionen und das Tennisfeld.
-    """
-    # Zeit in Frame umrechnen (bereits vorhandene Frame-Spalte nutzen)
-    frame_rate = 30
-    frame = int(time * frame_rate)
+    Parameters:
+        data: pandas.DataFrame
+            Die Daten mit Geschwindigkeit, Frame und Spieler-IDs.
+        game: str
+            Das Spiel, das ausgewertet werden soll (z.B. "1").
+        player_ids: list
+            Liste der Object.IDs der Spieler, die geplottet werden sollen.
+        figsize: tuple
+            Größe der gesamten Abbildung (Breite, Höhe).
 
-    # Spielerpositionen für den angegebenen Frame filtern
-    player_1 = player_positions[(player_positions["Frame"] == frame) & (player_positions["Object.ID"] == 0)]
-    player_2 = player_positions[(player_positions["Frame"] == frame) & (player_positions["Object.ID"] == 1)]
+    Returns:
+        fig: matplotlib.figure.Figure
+            Das erstellte Diagramm als Matplotlib-Figure.
+    """
+    # Daten für das angegebene Spiel filtern
+    data_game = data[data["Game"] == game]
+    
+    # Erstelle die Subplots entsprechend der Anzahl der Spieler (vertikal angeordnet)
+    num_players = len(player_ids)
+    fig, axes = plt.subplots(num_players, 1, figsize=figsize, sharex=True, sharey=True)
 
-    # Prüfen, ob Daten für beide Spieler vorhanden sind
-    if player_1.empty or player_2.empty:
-        st.warning(f"Keine Positionen für Spieler in Frame {frame} gefunden.")
+    # Falls nur ein Spieler angegeben ist, axes in eine Liste umwandeln
+    if num_players == 1:
+        axes = [axes]
+
+    # Definiere Farben und Namen für die Spieler
+    player_colors = {0: "red", 1: "blue"}  # Rot für Spieler 0, Blau für Spieler 1
+    player_names = {0: "Adrian", 1: "Raphael"}  # Namen für die Spieler
+
+    # Iteriere über Spieler-IDs und Achsen
+    for ax, player_id in zip(axes, player_ids):
+        # Daten für den Spieler filtern
+        player_data = data_game[data_game["Object.ID"] == player_id]
+
+        # Plot für den Spieler erstellen
+        color = player_colors.get(player_id, "black")  # Standardfarbe ist Schwarz, falls Spieler-ID nicht definiert
+        name = player_names.get(player_id, f"Spieler {player_id}")  # Standardname ist "Spieler {ID}"
+        ax.plot(range(len(player_data)), player_data["Speed"], label=name, linewidth=2, color=color)
+        ax.set_title(f"Geschwindigkeit über Zeit - {name}", fontsize=14)
+        ax.set_xlabel("Frame", fontsize=12)
+        ax.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
+        ax.legend()
+        ax.grid(True)
+
+    # Anpassungen für die gesamte Abbildung
+    plt.tight_layout()
+    return fig
+
+
+def visualize_winkelhalbierende_per_shot(data, game, shot_index):
+    """
+    Visualisiert die Winkelhalbierende für einen bestimmten Schlag innerhalb eines Spiels.
+
+    Parameters:
+        data: pandas.DataFrame
+            Die gesamte CSV-Daten.
+        game: str
+            Das Spiel, für das die Winkelhalbierende berechnet werden soll.
+        shot_index: int
+            Der Index des aktuellen Schlages (beginnend bei 0).
+
+    Returns:
+        fig: matplotlib.figure.Figure
+            Die erzeugte Visualisierung.
+    """
+    # Filtere Daten für das ausgewählte Spiel und Schläge
+    game_data = data[data["Game"] == game]
+    shots = game_data[game_data["Spieler schlägt"] == "Ja"]
+
+    # Prüfen, ob der Schlag-Index gültig ist
+    if shot_index < 0 or shot_index >= len(shots):
+        st.error(f"Ungültiger Schlag-Index: {shot_index}.")
         return None
 
-    # Spielerpositionen extrahieren
-    A = (player_1["Transformed.X"].iloc[0], player_1["Transformed.Y"].iloc[0])
-    player_2_pos = (player_2["Transformed.X"].iloc[0], player_2["Transformed.Y"].iloc[0])
+    # Daten für den aktuellen Schlag
+    current_shot = shots.iloc[shot_index]
+    frame = current_shot["Frame"]
+    object_id = current_shot["Object.ID"]  # Der schlagende Spieler
+    opponent_id = 1 - object_id  # Der Gegner (umgekehrt)
 
-    # Punkte B und C (statisch für das Tennisfeld)
-    B, C = (-5.485, 11.89), (5.485, 11.89)
+    # Spieler- und Gegnerdaten für den aktuellen Frame
+    player = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == object_id)]
+    opponent = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == opponent_id)]
 
-    # Punkt D auf der Winkelhalbierenden berechnen
-    D = calculate_intersection_point(A, B, C)
+    if player.empty or opponent.empty:
+        st.error("Keine gültigen Positionen für den aktuellen Schlag gefunden.")
+        return None
 
-    # Tennisfeld und Winkelhalbierende zeichnen
+    # Positionen des schlagenden Spielers und des Gegners
+    A = (player["Transformed.X"].iloc[0], player["Transformed.Y"].iloc[0])  # Spieler
+    B_opponent = (opponent["Transformed.X"].iloc[0], opponent["Transformed.Y"].iloc[0])  # Gegner
+
+    # Punkte C1 und C2 liegen auf der gegnerischen Spielfeldseite (links/rechts der Linie)
+    if object_id == 0:  # Spieler 0 schlägt von unten
+        C1 = (-5.485, 11.89)  # Linker Punkt oben
+        C2 = (5.485, 11.89)   # Rechter Punkt oben
+    else:  # Spieler 1 schlägt von oben
+        C1 = (-5.485, -11.89)  # Linker Punkt unten
+        C2 = (5.485, -11.89)   # Rechter Punkt unten
+
+    # Berechnung der Winkelhalbierenden
+    AB = math.sqrt((B_opponent[0] - A[0]) ** 2 + (B_opponent[1] - A[1]) ** 2)
+    AC1 = math.sqrt((C1[0] - A[0]) ** 2 + (C1[1] - A[1]) ** 2)
+    AC2 = math.sqrt((C2[0] - A[0]) ** 2 + (C2[1] - A[1]) ** 2)
+
+    # Berechnung der Schnittpunkte
+    Dx1 = (B_opponent[0] * AC1 + C1[0] * AB) / (AC1 + AB)
+    Dy1 = (B_opponent[1] * AC1 + C1[1] * AB) / (AC1 + AB)
+
+    Dx2 = (B_opponent[0] * AC2 + C2[0] * AB) / (AC2 + AB)
+    Dy2 = (B_opponent[1] * AC2 + C2[1] * AB) / (AC2 + AB)
+
+    D1 = (Dx1, Dy1)
+    D2 = (Dx2, Dy2)
+
+    # Tennisfeld zeichnen
+    court_width = 8.23
+    court_length = 23.77
+    service_line_dist = 6.4
+    net_position = 0
+
+    # Visualisierung
     fig, ax = plt.subplots(figsize=(12, 12))
-
-    # Tennisfeld-Abmessungen
-    singles_width = 8.23  # Breite des Einzelspielfelds in Metern
-    doubles_width = 11.0  # Breite des Doppelfelds in Metern
-    court_length = 23.77  # Länge des Spielfelds in Metern
-    service_line_dist = 6.4  # Abstand der Aufschlaglinie vom Netz
-    baseline_dist = court_length / 2  # Abstand der Grundlinie vom Netz
-
-    # Außenlinien (Doppelfeld)
-    ax.add_patch(patches.Rectangle((-doubles_width / 2, -baseline_dist),
-                                   doubles_width, court_length,
-                                   fill=False, edgecolor="black", lw=2))
-
-    # Einzelspielfeld
-    ax.add_patch(patches.Rectangle((-singles_width / 2, -baseline_dist),
-                                   singles_width, court_length,
+    ax.add_patch(patches.Rectangle((-court_width / 2, -court_length / 2),
+                                   court_width, court_length,
                                    fill=False, edgecolor="black", lw=2))
 
     # Netz
-    ax.plot([-doubles_width / 2, doubles_width / 2], [0, 0], color='black', lw=2)
-
-    # Grundlinien
-    ax.plot([-singles_width / 2, singles_width / 2], [baseline_dist, baseline_dist], color='black', lw=2)
-    ax.plot([-singles_width / 2, singles_width / 2], [-baseline_dist, -baseline_dist], color='black', lw=2)
+    ax.plot([-court_width / 2, court_width / 2], [net_position, net_position], color='black', lw=2)
 
     # Aufschlaglinien
-    ax.plot([-singles_width / 2, singles_width / 2], [service_line_dist, service_line_dist], color='black', lw=1)
-    ax.plot([-singles_width / 2, singles_width / 2], [-service_line_dist, -service_line_dist], color='black', lw=1)
+    ax.plot([-court_width / 2, court_width / 2], [net_position + service_line_dist, net_position + service_line_dist], color='black', lw=1)
+    ax.plot([-court_width / 2, court_width / 2], [net_position - service_line_dist, net_position - service_line_dist], color='black', lw=1)
 
     # Mittellinie
-    ax.plot([0, 0], [-service_line_dist, service_line_dist], color='black', lw=1)
+    ax.plot([0, 0], [net_position - service_line_dist, net_position + service_line_dist], color='black', lw=1)
 
-    # Winkelhalbierende und Spielerpositionen zeichnen
-    ax.plot([A[0], B[0]], [A[1], B[1]], 'b--')
-    ax.plot([A[0], C[0]], [A[1], C[1]], 'b--')
-    ax.plot([B[0], C[0]], [B[1], C[1]], 'k-')
-    ax.plot([A[0], D[0]], [A[1], D[1]], 'r-', label="Winkelhalbierende")
-    ax.scatter(D[0], D[1], color='red', label="Schnittpunkt D", zorder=5)
-    ax.scatter(A[0], A[1], color='blue', label="Spieler 1 (Punkt A)", zorder=5)
-    ax.scatter(player_2_pos[0], player_2_pos[1], color='orange', label="Spieler 2", zorder=5)
+    # Spielerpositionen einzeichnen
+    ax.scatter(A[0], A[1], color='blue', label=f"Spieler {object_id} (aktiv)", zorder=5)
+    ax.scatter(B_opponent[0], B_opponent[1], color='green', label=f"Gegner (Spieler {opponent_id})", zorder=5)
 
-    # Bereiche entlang der Winkelhalbierenden markieren
-    green_area = patches.Rectangle((D[0] - 2, 11.89 - 1.5), 4, 1.5, color='green', alpha=0.3)
-    yellow_area_left = patches.Rectangle((D[0] - 3, 11.89 - 1.5), 1, 1.5, color='yellow', alpha=0.3)
-    yellow_area_right = patches.Rectangle((D[0] + 2, 11.89 - 1.5), 1, 1.5, color='yellow', alpha=0.3)
-    red_area_left = patches.Rectangle((D[0] - 5, 11.89 - 1.5), 2, 1.5, color='red', alpha=0.3)
-    red_area_right = patches.Rectangle((D[0] + 3, 11.89 - 1.5), 2, 1.5, color='red', alpha=0.3)
+    # Winkelhalbierende einzeichnen
+    ax.plot([A[0], B_opponent[0]], [A[1], B_opponent[1]], 'b--', label="Linie A -> B")
+    ax.plot([A[0], C1[0]], [A[1], C1[1]], 'b--', label="Linie A -> C1")
+    ax.plot([A[0], C2[0]], [A[1], C2[1]], 'b--', label="Linie A -> C2")
+    ax.plot([B_opponent[0], C1[0]], [B_opponent[1], C1[1]], 'k-', label="Linie B -> C1")
+    ax.plot([B_opponent[0], C2[0]], [B_opponent[1], C2[1]], 'k-', label="Linie B -> C2")
 
-    ax.add_patch(green_area)
-    ax.add_patch(yellow_area_left)
-    ax.add_patch(yellow_area_right)
-    ax.add_patch(red_area_left)
-    ax.add_patch(red_area_right)
+    ax.plot([A[0], D1[0]], [A[1], D1[1]], 'r-', label="Winkelhalbierende 1")
+    ax.scatter(D1[0], D1[1], color='red', label="Schnittpunkt D1", zorder=5)
 
-    # Achsenbegrenzungen und Titel
-    ax.set_xlim(-singles_width, singles_width)
-    ax.set_ylim((-court_length / 2) - 3, (court_length / 2) + 3)
-    ax.set_title(f"Winkelhalbierende und Spielerpositionen bei t = {time}s")
-    ax.set_xlabel("X-Position (m)")
-    ax.set_ylabel("Y-Position (m)")
-    ax.legend()
-    plt.tight_layout()
+    ax.plot([A[0], D2[0]], [A[1], D2[1]], 'r-', label="Winkelhalbierende 2")
+    ax.scatter(D2[0], D2[1], color='red', label="Schnittpunkt D2", zorder=5)
+
+    # Titel und Einstellungen
+    plt.title(f"Winkelhalbierende für Schlag {shot_index + 1} (Spiel {game})")
     plt.axis('off')
-    plt.grid()
-
+    plt.tight_layout()
+    plt.ylim(-court_length / 2 - 3, court_length / 2 + 3)
+    plt.xlim(-court_width / 2 - 3, court_width / 2 + 3)
+    plt.legend()
     return fig
+
 
 
 # Streamlit App
 # Seiten-Auswahl
-page = st.sidebar.selectbox("Wähle eine Seite:", ["Gesamtübersicht", "Adrian", "Raphael"])
+page = st.sidebar.selectbox("Wähle eine Seite:", ["Gesamtübersicht", "Game 1", "Game 2", "Game 3"])
 
 if page == "Gesamtübersicht":
     st.title("Tennis Analyse")
@@ -285,47 +346,55 @@ if page == "Gesamtübersicht":
     metrics_table_transposed = calculate_metrics_transposed(csv_data)
     st.table(metrics_table_transposed)
     
-elif page == "Adrian":
-    st.title("Analyse für Adrian")
-
-    # Zeitslider
-    time = st.slider("Zeit (in Sekunden):", min_value=0.0, max_value=315.0, step=0.1, key="adrian_time")
+elif page == "Game 1":
+    st.title("Analyse für das Game 1")
     
-    # Geschwindigkeit über Zeit
-    player1_data = csv_data[csv_data["Object.ID"] == 0]
-    fig1, ax1 = plt.subplots(figsize=(8, 6))
-    ax1.plot(player1_data["Frame"], player1_data["Speed"], label="Adrian", linewidth=2, color="red")
-    ax1.set_title("Geschwindigkeit über Zeit - Adrian", fontsize=14)
-    ax1.set_xlabel("Frame", fontsize=12)
-    ax1.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
-    ax1.legend()
-    ax1.grid(True)
-    st.pyplot(fig1)
+    # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
+    fig_speed_1 = plot_speed_per_game(csv_data, game="1", player_ids=[0, 1])
+    st.pyplot(fig_speed_1)
     
-    # Winkelhalbierende
-    fig_winkel = visualize_winkelhalbierende_with_players(time, csv_data)
-    if fig_winkel:
-        st.pyplot(fig_winkel)
-
-elif page == "Raphael":
-    st.title("Analyse für Raphael")
-
-    # Zeitslider
-    time = st.slider("Zeit (in Sekunden):", min_value=0.0, max_value=315.0, step=0.1, key="raphael_time")
-
-    # Geschwindigkeit über Zeit
-    player2_data = csv_data[csv_data["Object.ID"] == 1]
-    fig2, ax2 = plt.subplots(figsize=(8, 6))
-    ax2.plot(player2_data["Frame"], player2_data["Speed"], label="Raphael", linewidth=2, color="blue")
-    ax2.set_title("Geschwindigkeit über Zeit - Raphael", fontsize=14)
-    ax2.set_xlabel("Frame", fontsize=12)
-    ax2.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
-    ax2.legend()
-    ax2.grid(True)
-    st.pyplot(fig2)
+    # Schlag-Regler
+    game_shots = csv_data[(csv_data["Game"] == "1") & (csv_data["Spieler schlägt"] == "Ja")]
+    shot_count = len(game_shots)
+    selected_shot = st.slider("Wähle einen Schlag:", min_value=0, max_value=shot_count - 1, step=1)
     
-    # Winkelhalbierende
-    fig_winkel = visualize_winkelhalbierende_with_players(time, csv_data)
-    if fig_winkel:
-        st.pyplot(fig_winkel)
+    # Winkelhalbierende für den ausgewählten Schlag visualisieren
+    fig_wink_1 = visualize_winkelhalbierende_per_shot(csv_data, game="1", shot_index=selected_shot)
+    if fig_wink_1:
+        st.pyplot(fig_wink_1)
+        
 
+elif page == "Game 2":
+    st.title("Analyse für das Game 2")
+
+    # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
+    fig_speed_2 = plot_speed_per_game(csv_data, game="2", player_ids=[0, 1])
+    st.pyplot(fig_speed_2)
+    
+    # Schlag-Regler
+    game_shots = csv_data[(csv_data["Game"] == "2") & (csv_data["Spieler schlägt"] == "Ja")]
+    shot_count = len(game_shots)
+    selected_shot = st.slider("Wähle einen Schlag:", min_value=0, max_value=shot_count - 1, step=1)
+    
+    # Winkelhalbierende für den ausgewählten Schlag visualisieren
+    fig_wink_2 = visualize_winkelhalbierende_per_shot(csv_data, game="2", shot_index=selected_shot)
+    if fig_wink_2:
+        st.pyplot(fig_wink_2)
+
+
+elif page == "Game 3":
+    st.title("Analyse für das Game 3")
+
+    # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
+    fig_speed_3 = plot_speed_per_game(csv_data, game="3", player_ids=[0, 1])
+    st.pyplot(fig_speed_3)
+    
+    # Schlag-Regler
+    game_shots = csv_data[(csv_data["Game"] == "3") & (csv_data["Spieler schlägt"] == "Ja")]
+    shot_count = len(game_shots)
+    selected_shot = st.slider("Wähle einen Schlag:", min_value=0, max_value=shot_count - 1, step=1)
+    
+    # Winkelhalbierende für den ausgewählten Schlag visualisieren
+    fig_wink_3 = visualize_winkelhalbierende_per_shot(csv_data, game="3", shot_index=selected_shot)
+    if fig_wink_3:
+        st.pyplot(fig_wink_3)
