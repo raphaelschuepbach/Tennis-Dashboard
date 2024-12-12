@@ -42,6 +42,59 @@ def get_current_score(current_time):
         if start_time <= current_time < end_time:
             return score_data
     return {"sets": [0, 0], "points": [0, 0]}
+
+def count_zone_visits(data, game, object_id, zone):
+    """
+    Zählt die Aufenthalte eines Spielers in einer bestimmten Zone, wenn der andere Spieler geschlagen hat.
+    
+    Args:
+        data: DataFrame mit Spieldaten
+        game: Spielnummer
+        object_id: ID des Spielers, dessen Aufenthalte gezählt werden
+        zone: Zielzone ("grün", "gelb" oder "rot")
+        
+    Returns:
+        Anzahl der Aufenthalte in der angegebenen Zone
+    """
+    # Filtere Daten für das angegebene Spiel
+    game_data = data[(data["Game"] == game) & (data["Spieler schlägt"] == "Ja") & (data["Object.ID"] == 1- object_id)]
+
+    # Definiere die Zonen
+    zone_limits = {
+        "grün": (-2, 2),
+        "gelb_links": (-3, -2),
+        "gelb_rechts": (2, 3),
+        "rot_links": (-6, -3),
+        "rot_rechts": (3, 6)
+    }
+    
+    # Wähle die passende Zonen-Grenze basierend auf der Eingabe
+    if zone == "grün":
+        limits = zone_limits["grün"]
+    elif zone == "gelb":
+        limits = zone_limits["gelb_links"], zone_limits["gelb_rechts"]
+    elif zone == "rot":
+        limits = zone_limits["rot_links"], zone_limits["rot_rechts"]
+    else:
+        return 0  # Ungültige Zone
+    
+    # Zähle Aufenthalte des Spielers in der Zone
+    count = 0
+    for _, shot in game_data.iterrows():
+        frame = shot["Frame"]
+        player_data = data[(data["Frame"] == frame) & (data["Object.ID"] == object_id)]
+        
+        if not player_data.empty:
+            player_x = player_data["Transformed.X"].iloc[0]
+            
+            if zone == "grün":
+                if limits[0] <= player_x <= limits[1]:
+                    count += 1
+            else:
+                if limits[0][0] <= player_x <= limits[0][1] or limits[1][0] <= player_x <= limits[1][1]:
+                    count += 1
+    
+    return count
  
 # Funktion zur Erstellung der Kennzahlen-Tabelle (Spieler als Spalten)
 def calculate_metrics_transposed(data):
@@ -109,6 +162,9 @@ def calculate_metrics_transposed_games(data, games):
             "Durchschn. Geschwindigkeit (m/s) in Game {}".format(games),
             "Max. Geschwindigkeit (m/s) in Game {}".format(games),
             "Zurückgelegte Distanz (m) in Game {} ".format(games),
+            "Anzahl Aufenthalte in Zone Grün, bei Schlag des Gegner in Game {} ".format(games),
+            "Anzahl Aufenthalte in Zone Gelb, bei Schlag des Gegner in Game {} ".format(games),
+            "Anzahl Aufenthalte in Zone Rot, bei Schlag des Gegner in Game {} ".format(games),
             
         ]
     }
@@ -143,6 +199,10 @@ def calculate_metrics_transposed_games(data, games):
 
         # Maximalgeschwindigkeit
         max_speed = player_data['Speed'].max()
+        
+        zone_grün = count_zone_visits(data, games, obj_id, "grün")
+        zone_gelb = count_zone_visits(data, games, obj_id, "gelb")
+        zone_rot = count_zone_visits(data, games, obj_id, "rot")
 
         # Spielername abrufen
         player_name = player_names.get(obj_id, f"Spieler {obj_id}")  # Name für Spieler anhand der Object.ID
@@ -161,7 +221,10 @@ def calculate_metrics_transposed_games(data, games):
         metrics[player_name] = [
             round(avg_speed, 2),
             round(max_speed, 2),
-            round(distanz_game_1, 2)
+            round(distanz_game_1, 2),
+            zone_grün,
+            zone_gelb,
+            zone_rot
         ]
     
     # Erstellen eines DataFrames
