@@ -4,67 +4,115 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import math
 
-# Daten laden
-player_positions = pd.read_csv("csv.csv")
-frame_rate = 30  # Frames pro Sekunde
+
+csv_data = pd.read_csv("csv.csv")
 
 def calculate_intersection_point(A, B, C):
     """
     Berechnet den Schnittpunkt D auf der Seite BC, wo die Winkelhalbierende vom Punkt A auf BC trifft.
     """
-    AB = math.sqrt((B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2)
-    AC = math.sqrt((C[0] - A[0]) ** 2 + (C[1] - A[1]) ** 2)
-    Dx = (B[0] * AC + C[0] * AB) / (AC + AB)
-    Dy = (B[1] * AC + C[1] * AB) / (AC + AB)
+    vector_AB = (B[0] - A[0], B[1] - A[1])
+    vector_AC = (C[0] - A[0], C[1] - A[1])
+
+    length_AB = math.sqrt(vector_AB[0]**2 + vector_AB[1]**2)
+    length_AC = math.sqrt(vector_AC[0]**2 + vector_AC[1]**2)
+
+    vector_AB_normalized = (vector_AB[0] / length_AB, vector_AB[1] / length_AB)
+    vector_AC_normalized = (vector_AC[0] / length_AC, vector_AC[1] / length_AC)
+
+    vector_bisector = (vector_AB_normalized[0] + vector_AC_normalized[0], vector_AB_normalized[1] + vector_AC_normalized[1])
+
+    # Schnittpunkt D berechnen
+    t = ((C[1] - B[1]) * (B[0] - A[0]) - (C[0] - B[0]) * (B[1] - A[1])) / ((C[1] - B[1]) * vector_bisector[0] - (C[0] - B[0]) * vector_bisector[1])
+    Dx = A[0] + t * vector_bisector[0]
+    Dy = A[1] + t * vector_bisector[1]
     return (Dx, Dy)
 
-def visualize_winkelhalbierende_with_players(time, player_positions):
+def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     """
     Visualisiert die Winkelhalbierende, Spielerpositionen und das Tennisfeld.
     """
-    # Zeit in Frame umrechnen
-    frame = int(time * frame_rate)
-
-    # Filter die Spielerpositionen für den gegebenen Frame
-    player_1 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 0)]
-    player_2 = player_positions[(player_positions["frame"] == frame) & (player_positions["Object.ID"] == 1)]
-
-    if player_1.empty or player_2.empty:
-        st.warning(f"Keine Positionen für Spieler in Frame {frame} gefunden.")
+    # Filtere Daten für das ausgewählte Spiel und Schläge
+    game_data = data[data["Game"] == game]
+    shots = game_data[game_data["Spieler schlägt"] == "Ja"]
+ 
+    # Prüfen, ob der Schlag-Index gültig ist
+    if shot_index < 0 or shot_index >= len(shots):
+        st.error(f"Ungültiger Schlag-Index: {shot_index}.")
         return None
-
-    A = (player_1["Transformed.X"].iloc[0], player_1["Transformed.Y"].iloc[0])
-    player_2_pos = (player_2["Transformed.X"].iloc[0], player_2["Transformed.Y"].iloc[0])
-
-    # Punkte B und C (statisch für das Tennisfeld)
-    B, C = (-5.485, 11.89), (5.485, 11.89)
+ 
+    # Daten für den aktuellen Schlag
+    current_shot = shots.iloc[shot_index]
+    frame = current_shot["Frame"]
+    object_id = current_shot["Object.ID"]  # Der schlagende Spieler
+    opponent_id = 1 - object_id  # Der Gegner (umgekehrt)
+ 
+    # Spieler- und Gegnerdaten für den aktuellen Frame
+    player = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == object_id)]
+    opponent = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == opponent_id)]
+ 
+    if player.empty or opponent.empty:
+        st.error("Keine gültigen Positionen für den aktuellen Schlag gefunden.")
+        return None
+ 
+    # Positionen des schlagenden Spielers und des Gegners
+    A = (player["Transformed.X"].iloc[0], player["Transformed.Y"].iloc[0])  # Spieler
+    player_2_pos = (opponent["Transformed.X"].iloc[0], opponent["Transformed.Y"].iloc[0])  # Gegner
+     
+    if object_id == 0:
+        field_width = 10.97  # Anpassen an deine Daten
+        B = (-field_width / 2, 11.89)
+        C = (field_width / 2, 11.89)
+        X = 11.89
+        Z = 1.5
+    else:
+        field_width = 10.97
+        B = (-field_width / 2, -11.89)
+        C = (field_width / 2, -11.89)
+        X = -11.89
+        Z = -1.5
 
     # Berechne den Punkt auf der Winkelhalbierenden
     D = calculate_intersection_point(A, B, C)
 
-    # Erstellen der Grafik
-    fig, ax = plt.subplots(figsize=(12, 8))
+    
 
     # Tennisfeld zeichnen
-    court_width = 8.23
-    court_length = 23.77
-    service_line_dist = 6.4
-    net_position = 0
+    fig, ax = plt.subplots(figsize=(12, 12))
+ 
+    # Tennisfeldabmessungen (in Metern)
+    length = 23.77  
+    width = 8.23   
+    double_width = 10.97  
+    service_line_dist = 6.40  
+    net_position = 0 
+    
+    # Zusätzlicher Platz um das Feld (3 Meter)
+    extra_space = 0
 
-    # Außenlinien
-    ax.add_patch(patches.Rectangle((-court_width / 2, -court_length / 2),
-                                   court_width, court_length,
-                                   fill=False, edgecolor="black", lw=2))
     
+    # Tennisfeld (Grundlinien und Seitenlinien für Einzel)
+    ax.add_patch(patches.Rectangle((-width / 2 - extra_space, -length / 2 - extra_space),
+                                width + 2 * extra_space, length + 2 * extra_space,
+                                fill=False, edgecolor="black", lw=2))
+    
+    # Seitenlinien für Doppel (außerhalb des Einzelfelds)
+    ax.add_patch(patches.Rectangle((-double_width / 2 - extra_space, -length / 2 - extra_space),
+                                double_width + 2 * extra_space, length + 2 * extra_space,
+                                fill=False, edgecolor="black", lw=2))
+
     # Netz
-    ax.plot([-court_width / 2, court_width / 2], [net_position, net_position], color='black', lw=2)
-    
+    ax.plot([-double_width / 2 - extra_space, double_width / 2 + extra_space],
+         [net_position, net_position], color='black', lw=2)
+
     # Aufschlaglinien
-    ax.plot([-court_width / 2, court_width / 2], [net_position + service_line_dist, net_position + service_line_dist], color='black', lw=1)
-    ax.plot([-court_width / 2, court_width / 2], [net_position - service_line_dist, net_position - service_line_dist], color='black', lw=1)
-    
+    ax.plot([-width / 2 - extra_space, width / 2 + extra_space],
+         [service_line_dist, service_line_dist], color='black', lw=2)
+    ax.plot([-width / 2 - extra_space, width / 2 + extra_space],
+         [-service_line_dist, -service_line_dist], color='black', lw=2)
+
     # Mittellinie
-    ax.plot([0, 0], [net_position - service_line_dist, net_position + service_line_dist], color='black', lw=1)
+    ax.plot([0, 0], [-service_line_dist, service_line_dist], color='black', lw=2)
 
     # Zeichne das Dreieck
     ax.plot([A[0], B[0]], [A[1], B[1]], 'b--', label="Seite AB")
@@ -82,11 +130,11 @@ def visualize_winkelhalbierende_with_players(time, player_positions):
     ax.scatter(player_2_pos[0], player_2_pos[1], color='orange', label="Spieler 2", zorder=5)
 
     # Färbe die Bereiche entlang der X-Achse (basierend auf D)
-    green_area = patches.Rectangle((D[0] - 2, 11.89 - 1.5), 4, 1.5, color='green', alpha=0.3)
-    yellow_area_left = patches.Rectangle((D[0] - 3, 11.89 - 1.5), 1, 1.5, color='yellow', alpha=0.3)
-    yellow_area_right = patches.Rectangle((D[0] + 2, 11.89 - 1.5), 1, 1.5, color='yellow', alpha=0.3)
-    red_area_left = patches.Rectangle((D[0] - 5, 11.89 - 1.5), 2, 1.5, color='red', alpha=0.3)
-    red_area_right = patches.Rectangle((D[0] + 3, 11.89 - 1.5), 2, 1.5, color='red', alpha=0.3)
+    green_area = patches.Rectangle((D[0] - 2, X - Z), 4, Z, color='green', alpha=0.3)
+    yellow_area_left = patches.Rectangle((D[0] - 3, X - Z), 1, Z, color='yellow', alpha=0.3)
+    yellow_area_right = patches.Rectangle((D[0] + 2, X - Z), 1, Z, color='yellow', alpha=0.3)
+    red_area_left = patches.Rectangle((D[0] - 5, X - Z), 2, Z, color='red', alpha=0.3)
+    red_area_right = patches.Rectangle((D[0] + 3, X - Z), 2, Z, color='red', alpha=0.3)
     
     ax.add_patch(green_area)
     ax.add_patch(yellow_area_left)
@@ -95,9 +143,9 @@ def visualize_winkelhalbierende_with_players(time, player_positions):
     ax.add_patch(red_area_right)
 
     # Achsenbegrenzung und Titel
-    ax.set_xlim(-court_width, court_width)
-    ax.set_ylim(-court_length / 2, court_length / 2)
-    ax.set_title(f"Winkelhalbierende und Spielerpositionen bei t = {time}s")
+    ax.set_xlim(-width, width)
+    ax.set_ylim((-length / 2) -3, (length / 2) + 3)
+    ax.set_title(f"Winkelhalbierende und Spielerpositionen bei t = ")
     ax.set_xlabel("X-Position (m)")
     ax.set_ylabel("Y-Position (m)")
     ax.legend()
@@ -107,93 +155,24 @@ def visualize_winkelhalbierende_with_players(time, player_positions):
 # Streamlit App
 st.title("Tennis Analyse mit Spielerpositionen")
 
-# Slider für Zeit
-time = st.slider("Zeit (in Sekunden):", min_value=0, max_value=10, step=1)
-
-# Visualisierung der Spielerpositionen und Winkelhalbierenden
-fig = visualize_winkelhalbierende_with_players(time, player_positions)
-if fig:
-    st.pyplot(fig)
+page = st.sidebar.selectbox("Wähle eine Seite:", ["Gesamtübersicht", "Game 1", "Game 2", "Game 3"])  
+    
+if page == "Game 2":
+    st.title("Analyse für das Game 2")
+    game_shots = csv_data[(csv_data["Game"] == "2") & (csv_data["Spieler schlägt"] == "Ja")]
+    shot_count = len(game_shots)
+    selected_shot = st.slider("Wähle einen Schlag:", min_value=0, max_value=shot_count - 1, step=1)
+    
+    # Visualisierung der Spielerpositionen und Winkelhalbierenden
+    fig = visualize_winkelhalbierende_per_shot(csv_data, "2", selected_shot)
+    if fig:
+        st.pyplot(fig)
     
     
+
+ 
+    # Schlag-Regler
     
+   
+      
     
-    
-# Funktion zur Visualisierung der Winkelhalbierenden
-def visualize_winkelhalbierende(data, frame, object_id, opponent_id):
-    """
-    Visualisiert die Winkelhalbierende für den angegebenen Spieler (object_id)
-    und zeigt die Position des Gegners (opponent_id).
-    """
-    # Spieler-Daten für den aktuellen Frame
-    player = data[(data["Frame"] == frame) & (data["Object.ID"] == object_id)]
-    opponent = data[(data["Frame"] == frame) & (data["Object.ID"] == opponent_id)]
-
-    # Debugging: Sicherstellen, dass Daten korrekt geladen werden
-    if player.empty:
-        st.error(f"Keine Daten für Spieler {object_id} in Frame {frame}")
-        return None
-    if opponent.empty:
-        st.error(f"Keine Daten für Gegner {opponent_id} in Frame {frame}")
-        return None
-
-    # Positionen der Spieler
-    A = (player["Transformed.X"].iloc[0], player["Transformed.Y"].iloc[0])  # Spieler
-    B_opponent = (opponent["Transformed.X"].iloc[0], opponent["Transformed.Y"].iloc[0])  # Gegner
-
-    # Dynamische Punkte B und C für den aktiven Spieler
-    if -1.485 <= A[0] <= 1.485:
-        B, C = (-5.485, -11.89), (5.485, -11.89)
-    elif A[0] < -1.485:
-        B, C = (-5.485, -11.89), (4.115, -6.4)
-    elif A[0] > 1.485:
-        B, C = (-4.115, -6.4), (5.485, -11.89)
-
-    # Schnittpunkt D berechnen
-    AB = math.sqrt((B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2)
-    AC = math.sqrt((C[0] - A[0]) ** 2 + (C[1] - A[1]) ** 2)
-    Dx = (B[0] * AC + C[0] * AB) / (AC + AB)
-    Dy = (B[1] * AC + C[1] * AB) / (AC + AB)
-    D = (Dx, Dy)
-
-    # Tennisfeld zeichnen
-    court_width = 8.23
-    court_length = 23.77
-    service_line_dist = 6.4
-    net_position = 0
-
-    # Visualisierung
-    fig, ax = plt.subplots(figsize=(12, 12))
-    ax.add_patch(patches.Rectangle((-court_width / 2, -court_length / 2),
-                                   court_width, court_length,
-                                   fill=False, edgecolor="black", lw=2))
-    
-    # Netz
-    ax.plot([-court_width / 2, court_width / 2], [net_position, net_position], color='black', lw=2)
-    
-    # Aufschlaglinien
-    ax.plot([-court_width / 2, court_width / 2], [net_position + service_line_dist, net_position + service_line_dist], color='black', lw=1)
-    ax.plot([-court_width / 2, court_width / 2], [net_position - service_line_dist, net_position - service_line_dist], color='black', lw=1)
-    
-    # Mittellinie
-    ax.plot([0, 0], [net_position - service_line_dist, net_position + service_line_dist], color='black', lw=1)
-
-    # Spielerpositionen einzeichnen
-    ax.scatter(A[0], A[1], color='blue', label=f"Spieler {object_id} (aktiv)", zorder=5)
-    ax.scatter(B_opponent[0], B_opponent[1], color='green', label=f"Gegner (Spieler {opponent_id})", zorder=5)
-
-    # Winkelhalbierende einzeichnen
-    ax.plot([A[0], B[0]], [A[1], B[1]], 'b--', label="Linie A -> B")
-    ax.plot([A[0], C[0]], [A[1], C[1]], 'b--', label="Linie A -> C")
-    ax.plot([B[0], C[0]], [B[1], C[1]], 'k-', label="Linie B -> C")
-    ax.plot([A[0], D[0]], [A[1], D[1]], 'r-', label="Winkelhalbierende")
-    ax.scatter(D[0], D[1], color='red', label="Schnittpunkt D", zorder=5)
-
-    # Titel und Einstellungen
-    plt.title(f"Winkelhalbierende und Spielerpositionen bei Frame {frame} (Spieler {object_id})")
-    plt.axis('off')
-    plt.tight_layout()
-    plt.ylim(-court_length / 2 - 3, court_length / 2 + 3)
-    plt.xlim(-court_width / 2 - 3, court_width / 2 + 3)
-    plt.legend()
-    return fig
