@@ -43,57 +43,69 @@ def get_current_score(current_time):
             return score_data
     return {"sets": [0, 0], "points": [0, 0]}
 
-def count_zone_visits(data, game, object_id, zone):
-    """
-    Zählt die Aufenthalte eines Spielers in einer bestimmten Zone, wenn der andere Spieler geschlagen hat.
-    
-    Args:
-        data: DataFrame mit Spieldaten
-        game: Spielnummer
-        object_id: ID des Spielers, dessen Aufenthalte gezählt werden
-        zone: Zielzone ("grün", "gelb" oder "rot")
-        
-    Returns:
-        Anzahl der Aufenthalte in der angegebenen Zone
-    """
+def count_zone_occurrences(data, game, zone, object_id):
     # Filtere Daten für das angegebene Spiel
-    game_data = data[(data["Game"] == game) & (data["Spieler schlägt"] == "Ja") & (data["Object.ID"] == 1- object_id)]
+    game_data = data[(data["Game"] == game) & (data["Spieler schlägt"] == "Ja") & (data["Object.ID"] == object_id)]
 
-    # Definiere die Zonen
-    zone_limits = {
-        "grün": (-2, 2),
-        "gelb_links": (-3, -2),
-        "gelb_rechts": (2, 3),
-        "rot_links": (-6, -3),
-        "rot_rechts": (3, 6)
-    }
-    
-    # Wähle die passende Zonen-Grenze basierend auf der Eingabe
-    if zone == "grün":
-        limits = zone_limits["grün"]
-    elif zone == "gelb":
-        limits = zone_limits["gelb_links"], zone_limits["gelb_rechts"]
-    elif zone == "rot":
-        limits = zone_limits["rot_links"], zone_limits["rot_rechts"]
-    else:
-        return 0  # Ungültige Zone
-    
-    # Zähle Aufenthalte des Spielers in der Zone
     count = 0
+
     for _, shot in game_data.iterrows():
         frame = shot["Frame"]
-        player_data = data[(data["Frame"] == frame) & (data["Object.ID"] == object_id)]
+        player_data = data[(data["Frame"] == frame) & (data["Object.ID"] == 1 - object_id)]
         
+        A = shot["Transformed.X"], shot["Transformed.Y"]
+
+        if -2 <= A[0] <= 2:
+            field_width = 10.97
+            if object_id == 0:
+                B, C, X, Z = (-field_width / 2, 11.89), (field_width / 2, 11.89), 11.89, 1.5
+            else:
+                B, C, X, Z = (-field_width / 2, -11.89), (field_width / 2, -11.89), -11.89, -1.5
+
+        elif A[0] < -2:
+            field_width = 8.23
+            if object_id == 0:
+                B, C, X, Z = (-field_width / 2, 11.89), (7.5, 11.89), 11.89, 1.5
+            else:
+                B, C, X, Z = (-field_width / 2, -11.89), (7.5, -11.89), -11.89, -1.5
+
+        else:
+            field_width = 8.23
+            if object_id == 0:
+                B, C, X, Z = (-7.5, 11.89), (field_width / 2, 11.89), 11.89, 1.5
+            else:
+                B, C, X, Z = (-7.5, -11.89), (field_width / 2, -11.89), -11.89, -1.5
+
+        D = calculate_intersection_point(A, B, C)
+
+        zone_limits = {
+            "grün": (D[0] - 0.5, D[0] + 0.5),
+            "gelb_links": (D[0] - 0.5, D[0] - 2),
+            "gelb_rechts": (D[0] + 0.5, D[0] + 2),
+            "rot_links": (D[0] - 2, D[0] - 5.5),
+            "rot_rechts": (D[0] + 2, D[0] + 5.5)
+        }
+
+        if zone == "grün":
+            limits = zone_limits[zone]
+        elif zone == "gelb":
+            limits = zone_limits["gelb_links"], zone_limits["gelb_rechts"]
+        elif zone == "rot":
+            limits = zone_limits["rot_links"], zone_limits["rot_rechts"]
+        else:
+            continue
+
         if not player_data.empty:
             player_x = player_data["Transformed.X"].iloc[0]
-            
+
             if zone == "grün":
                 if limits[0] <= player_x <= limits[1]:
                     count += 1
             else:
-                if limits[0][0] <= player_x <= limits[0][1] or limits[1][0] <= player_x <= limits[1][1]:
+                limits = tuple(sorted(l) for l in limits)
+                if (limits[0][0] <= player_x <= limits[0][1] or limits[1][0] <= player_x <= limits[1][1]):
                     count += 1
-    
+
     return count
  
 # Funktion zur Erstellung der Kennzahlen-Tabelle (Spieler als Spalten)
@@ -102,7 +114,12 @@ def calculate_metrics_transposed(data):
         "Kennzahl": [
             "Durchschn. Geschwindigkeit (m/s)",
             "Max. Geschwindigkeit (m/s)",
-            "Zurückgelegte Gesamtdistanz (m)"
+            "Zurückgelegte Gesamtdistanz (m)",
+            "Durchschn. Geschwindigkeit (m/s) bei Schlag",
+            "Anzahl Aufenthalte in Zone Grün, bei Schlag des Gegner",
+            "Anzahl Aufenthalte in Zone Gelb, bei Schlag des Gegner",
+            "Anzahl Aufenthalte in Zone Rot, bei Schlag des Gegner"
+            
         ]
     }
     
@@ -111,21 +128,23 @@ def calculate_metrics_transposed(data):
 
     # Daten sortieren
     filtered_data = filtered_data.sort_values(by=['Object.ID', 'Frame'])
+    
+    spieler_schlägt = filtered_data[filtered_data['Spieler schlägt'] == 'Ja']
 
-    # Differenzen berechnen
+    # Berechnung der Differenzen nur bei aufeinanderfolgenden Frames
     filtered_data['Delta.X'] = filtered_data.groupby(['Object.ID', 'Game'])['Transformed.X'].diff()
     filtered_data['Delta.Y'] = filtered_data.groupby(['Object.ID', 'Game'])['Transformed.Y'].diff()
+
+    # Filtere nur aufeinanderfolgende Frames
+    filtered_data = filtered_data[filtered_data['Frame'].diff() == 1]
 
     # Euklidische Distanz berechnen
     filtered_data['Distanz'] = np.sqrt(filtered_data['Delta.X']**2 + filtered_data['Delta.Y']**2)
 
-    # Distanz pro Spiel und Spieler berechnen
-    distanz_pro_game = filtered_data.groupby(['Object.ID', 'Game'])['Distanz'].sum().reset_index()
-    distanz_pro_game.columns = ['Object.ID', 'Game', 'Distanz (m)']
-
     # Gesamtdistanz pro Spieler berechnen
     gesamt_distanz = filtered_data.groupby('Object.ID')['Distanz'].sum().reset_index()
     gesamt_distanz.columns = ['Object.ID', 'Gesamtstrecke (m)']
+
     
     for obj_id in data['Object.ID'].unique():
         # Daten des aktuellen Spielers
@@ -134,8 +153,24 @@ def calculate_metrics_transposed(data):
         # Durchschnittliche Geschwindigkeit
         avg_speed = player_data['Speed'].mean()
 
+        avg_speed_schlag = spieler_schlägt[spieler_schlägt['Object.ID'] == obj_id]['Speed'].mean()
         # Maximalgeschwindigkeit
         max_speed = player_data['Speed'].max()
+        
+        zone_grün_1 = count_zone_occurrences(data, "1", "grün", 1- obj_id)
+        zone_grün_2 = count_zone_occurrences(data, "2", "grün", 1- obj_id)
+        zone_grün_3 = count_zone_occurrences(data, "3", "grün", 1- obj_id)
+        zone_grün = zone_grün_1 + zone_grün_2 + zone_grün_3
+        
+        zone_gelb_1 = count_zone_occurrences(data, "1", "gelb", 1- obj_id)
+        zone_gelb_2 = count_zone_occurrences(data, "2", "gelb", 1- obj_id)
+        zone_gelb_3 = count_zone_occurrences(data, "3", "gelb", 1- obj_id)
+        zone_gelb = zone_gelb_1 + zone_gelb_2 + zone_gelb_3
+        
+        zone_rot_1 = count_zone_occurrences(data, "1", "rot", 1- obj_id)
+        zone_rot_2 = count_zone_occurrences(data, "2", "rot", 1- obj_id)
+        zone_rot_3 = count_zone_occurrences(data, "3", "rot", 1- obj_id)
+        zone_rot = zone_rot_1 + zone_rot_2 + zone_rot_3
 
         # Spielername abrufen
         player_name = player_names.get(obj_id, f"Spieler {obj_id}")  # Name für Spieler anhand der Object.ID
@@ -145,10 +180,14 @@ def calculate_metrics_transposed(data):
 
         # Hinzufügen der Daten zu den Metriken
         metrics[player_name] = [
-            round(avg_speed, 2),
-            round(max_speed, 2),
-            round(player_gesamt_distanz, 2)
-        ]
+            f"{round(avg_speed, 2):.2f}",
+            f"{round(max_speed, 2):.2f}",
+            f"{round(player_gesamt_distanz, 2):.2f}",
+            f"{round(avg_speed_schlag, 2):.2f}",
+            f"{int(zone_grün)}",
+            f"{int(zone_gelb)}",
+            f"{int(zone_rot)}"
+            ]
     
     # Erstellen eines DataFrames
     metrics_df = pd.DataFrame(metrics)
@@ -162,6 +201,7 @@ def calculate_metrics_transposed_games(data, games):
             "Durchschn. Geschwindigkeit (m/s) in Game {}".format(games),
             "Max. Geschwindigkeit (m/s) in Game {}".format(games),
             "Zurückgelegte Distanz (m) in Game {} ".format(games),
+            "Durchschn. Geschwindigkeit (m/s) bei Schlag in Game {}".format(games),
             "Anzahl Aufenthalte in Zone Grün, bei Schlag des Gegner in Game {} ".format(games),
             "Anzahl Aufenthalte in Zone Gelb, bei Schlag des Gegner in Game {} ".format(games),
             "Anzahl Aufenthalte in Zone Rot, bei Schlag des Gegner in Game {} ".format(games),
@@ -175,20 +215,24 @@ def calculate_metrics_transposed_games(data, games):
     # Daten sortieren
     filtered_data = filtered_data.sort_values(by=['Object.ID', 'Frame'])
 
-    # Differenzen berechnen
+    # Berechnung der Differenzen nur bei aufeinanderfolgenden Frames
     filtered_data['Delta.X'] = filtered_data.groupby(['Object.ID', 'Game'])['Transformed.X'].diff()
     filtered_data['Delta.Y'] = filtered_data.groupby(['Object.ID', 'Game'])['Transformed.Y'].diff()
 
+    # Filtere nur aufeinanderfolgende Frames
+    filtered_data = filtered_data[filtered_data['Frame'].diff() == 1]
+
     # Euklidische Distanz berechnen
     filtered_data['Distanz'] = np.sqrt(filtered_data['Delta.X']**2 + filtered_data['Delta.Y']**2)
+
+    #
+    spieler_schlägt = filtered_data[filtered_data['Spieler schlägt'] == 'Ja']
 
     # Distanz pro Spiel und Spieler berechnen
     distanz_pro_game = filtered_data.groupby(['Object.ID', 'Game'])['Distanz'].sum().reset_index()
     distanz_pro_game.columns = ['Object.ID', 'Game', 'Distanz (m)']
 
-    # Gesamtdistanz pro Spieler berechnen
-    gesamt_distanz = filtered_data.groupby('Object.ID')['Distanz'].sum().reset_index()
-    gesamt_distanz.columns = ['Object.ID', 'Gesamtstrecke (m)']
+    
     
     for obj_id in filtered_data['Object.ID'].unique():
         # Daten des aktuellen Spielers
@@ -200,9 +244,11 @@ def calculate_metrics_transposed_games(data, games):
         # Maximalgeschwindigkeit
         max_speed = player_data['Speed'].max()
         
-        zone_grün = count_zone_visits(data, games, obj_id, "grün")
-        zone_gelb = count_zone_visits(data, games, obj_id, "gelb")
-        zone_rot = count_zone_visits(data, games, obj_id, "rot")
+        avg_speed_schlag = spieler_schlägt[spieler_schlägt['Object.ID'] == obj_id]['Speed'].mean()
+        
+        zone_grün = count_zone_occurrences(data, games,"grün", 1- obj_id,)
+        zone_gelb = count_zone_occurrences(data, games,"gelb", 1- obj_id)
+        zone_rot = count_zone_occurrences(data, games,"rot", 1-obj_id)
 
         # Spielername abrufen
         player_name = player_names.get(obj_id, f"Spieler {obj_id}")  # Name für Spieler anhand der Object.ID
@@ -219,13 +265,15 @@ def calculate_metrics_transposed_games(data, games):
 
         # Hinzufügen der Daten zu den Metriken
         metrics[player_name] = [
-            round(avg_speed, 2),
-            round(max_speed, 2),
-            round(distanz_game_1, 2),
-            zone_grün,
-            zone_gelb,
-            zone_rot
-        ]
+            f"{round(avg_speed, 2):.2f}",
+            f"{round(max_speed, 2):.2f}",
+            f"{round(distanz_game_1, 2):.2f}",
+            f"{round(avg_speed_schlag, 2):.2f}",
+            f"{int(zone_grün)}",
+            f"{int(zone_gelb)}",
+            f"{int(zone_rot)}"
+            ]
+
     
     # Erstellen eines DataFrames
     metrics_df = pd.DataFrame(metrics)
@@ -271,11 +319,12 @@ def combined_heatmap(data, current_frame):
     # Mittellinie
     ax.plot([0, 0], [-service_line_dist, service_line_dist], color='black', lw=2)
 
-    # Heatmaps für Spieler 2 (rot) und Spieler 1 (blau)
-    cmap1 = sns.color_palette("Reds", as_cmap=True)   # Spieler 2
-    cmap2 = sns.color_palette("Blues", as_cmap=True)  # Spieler 1
+    # Heatmaps für Spieler 1 (blau) und Spieler 0 (rot)
+    color_maps = {1: sns.color_palette("Blues", as_cmap=True), 0: sns.color_palette("Reds", as_cmap=True)}
 
-    for obj_id, cmap in zip(data['Object.ID'].unique(), [cmap1, cmap2]):
+    for obj_id in [0, 1]:  # Festgelegte Reihenfolge
+        cmap = color_maps[obj_id]
+
         # Filtere Daten für die Heatmap
         subset = data[(data['Object.ID'] == obj_id) & (data['Spiel läuft'] == 'Ja')]
         sns.kdeplot(data=subset, x='Transformed.X', y='Transformed.Y', cmap=cmap, fill=True, alpha=0.7, ax=ax, label=f"Spieler {obj_id}")
@@ -296,10 +345,12 @@ def combined_heatmap(data, current_frame):
     return fig
 
  
-def plot_speed_per_game(data, game, player_id,frame):
+import matplotlib.pyplot as plt
+
+def plot_speed_per_game(data, game, player_ids, frame):
     """
-    Erstellt Geschwindigkeit-Diagramme für alle angegebenen Spieler untereinander.
- 
+    Erstellt Geschwindigkeit-Diagramme für alle angegebenen Spieler in einem Plot.
+
     Parameters:
         data: pandas.DataFrame
             Die Daten mit Geschwindigkeit, Frame und Spieler-IDs.
@@ -307,82 +358,121 @@ def plot_speed_per_game(data, game, player_id,frame):
             Das Spiel, das ausgewertet werden soll (z.B. "1").
         player_ids: list
             Liste der Object.IDs der Spieler, die geplottet werden sollen.
-        figsize: tuple
-            Größe der gesamten Abbildung (Breite, Höhe).
- 
+        frame: int
+            Der Frame, bei dem ein Punkt hervorgehoben werden soll.
+
     Returns:
         fig: matplotlib.figure.Figure
             Das erstellte Diagramm als Matplotlib-Figure.
     """
     # Daten für das angegebene Spiel filtern
     data_game = data[data["Game"] == game]
-   
-    
- 
-    # Falls nur ein Spieler angegeben ist, axes in eine Liste umwandeln
-    fig, ax = plt.subplots(figsize=(10,4))
- 
+
+    # Erstelle die Abbildung
+    fig, ax = plt.subplots(figsize=(10, 6))
+
     # Definiere Farben und Namen für die Spieler
     player_colors = {0: "red", 1: "blue"}  # Rot für Spieler 0, Blau für Spieler 1
     player_names = {0: "Adrian", 1: "Raphael"}  # Namen für die Spieler
- 
-    
-    # Daten für den Spieler filtern
-    player_data = data_game[data_game["Object.ID"] == player_id]
-    indices = player_data.index[player_data['Frame'] == frame].tolist()
-    relative_index = player_data.index.get_loc(indices[0])
-    highlight_speed = player_data.loc[indices, "Speed"]# Plot für den Spieler erstellen
-    color = player_colors.get(player_id, "black")  # Standardfarbe ist Schwarz, falls Spieler-ID nicht definiert
-    name = player_names.get(player_id, f"Spieler {player_id}")  # Standardname ist "Spieler {ID}"
-    ax.plot(range(len(player_data)), player_data["Speed"], label=name, linewidth=2, color=color)
-    ax.plot(relative_index, highlight_speed, "ro", markersize=8, label="Aktuelle Geschwindigkeit")
-    ax.set_title(f"Geschwindigkeit über Game {game} - {name}", fontsize=14)
+    marker_colors = {0: "black", 1: "white"}  # Markerfarben für die Spieler
+
+    for player_id in player_ids:
+        # Daten für den aktuellen Spieler filtern
+        player_data = data_game[data_game["Object.ID"] == player_id]
+
+        # Index des Frames finden
+        indices = player_data.index[player_data["Frame"] == frame].tolist()
+        if indices:
+            relative_index = player_data.index.get_loc(indices[0])
+            highlight_speed = player_data.loc[indices[0], "Speed"]
+        else:
+            relative_index = None
+            highlight_speed = None
+
+        # Plot für den Spieler erstellen
+        color = player_colors.get(player_id, "black")  # Standardfarbe
+        name = player_names.get(player_id, f"Spieler {player_id}")  # Standardname
+        marker_color = marker_colors.get(player_id, "black")  # Markerfarbe
+
+        ax.plot(
+            range(len(player_data)), 
+            player_data["Speed"], 
+            label=name, 
+            linewidth=2, 
+            color=color
+        )
+        
+        # Hervorgehobenen Punkt plotten, falls Frame gefunden
+        if relative_index is not None:
+            ax.plot(
+                relative_index, 
+                highlight_speed, 
+                "o", 
+                markersize=8, 
+                markeredgecolor="black", 
+                markerfacecolor=marker_color, 
+                label=f"Speed in Frame {frame} ({name})"
+            )
+
+    # Achsentitel und Legende
+    ax.set_title(f"Geschwindigkeit über Game {game}", fontsize=14)
     ax.set_xlabel("Frame", fontsize=12)
     ax.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
     ax.legend()
     ax.grid(True)
- 
+
     # Anpassungen für die gesamte Abbildung
     plt.tight_layout()
     return fig
+
  
-def plot_speed_gesamt(data, player_id):
+import matplotlib.pyplot as plt
+
+def plot_speed_gesamt(data, player_ids):
     """
-    Erstellt Geschwindigkeit-Diagramme für alle angegebenen Spieler untereinander.
- 
+    Erstellt ein Geschwindigkeit-Diagramm für mehrere Spieler in einem Plot.
+
     Parameters:
         data: pandas.DataFrame
             Die Daten mit Geschwindigkeit, Frame und Spieler-IDs.
-        game: str
-            Das Spiel, das ausgewertet werden soll (z.B. "1").
         player_ids: list
             Liste der Object.IDs der Spieler, die geplottet werden sollen.
-        figsize: tuple
-            Größe der gesamten Abbildung (Breite, Höhe).
- 
+
     Returns:
         fig: matplotlib.figure.Figure
             Das erstellte Diagramm als Matplotlib-Figure.
     """
-    # Falls nur ein Spieler angegeben ist, axes in eine Liste umwandeln
-    fig, ax = plt.subplots(figsize=(10,4))
- 
+    # Erstelle die Abbildung
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
     # Definiere Farben und Namen für die Spieler
     player_colors = {0: "red", 1: "blue"}  # Rot für Spieler 0, Blau für Spieler 1
     player_names = {0: "Adrian", 1: "Raphael"}  # Namen für die Spieler
- 
     
-    # Daten für den Spieler filtern
-    player_data = data[(data["Object.ID"] == player_id) & (data["Spiel läuft"] == "Ja")]
-    color = player_colors.get(player_id, "black")  # Standardfarbe ist Schwarz, falls Spieler-ID nicht definiert
-    name = player_names.get(player_id, f"Spieler {player_id}")  # Standardname ist "Spieler {ID}"
-    ax.plot(range(len(player_data)), player_data["Speed"], label=name, linewidth=2, color=color)
-    ax.set_title(f"Geschwindigkeit über das gesamte Spiel - {name}", fontsize=14)
+    for player_id in player_ids:
+        # Daten für den aktuellen Spieler filtern
+        player_data = data[(data["Object.ID"] == player_id) & (data["Spiel läuft"] == "Ja")]
+        
+        # Bestimme Farbe und Name
+        color = player_colors.get(player_id, "black")  # Standardfarbe ist Schwarz
+        name = player_names.get(player_id, f"Spieler {player_id}")  # Standardname
+        
+        # Plotten der Geschwindigkeitskurve
+        ax.plot(
+            range(len(player_data)), 
+            player_data["Speed"], 
+            label=name, 
+            linewidth=2, 
+            color=color
+        )
+    
+    # Achsentitel und Legende
+    ax.set_title("Geschwindigkeit über das gesamte Spiel", fontsize=14)
     ax.set_xlabel("Frame", fontsize=12)
     ax.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
     ax.legend()
     ax.grid(True)
- 
+    
     # Anpassungen für die gesamte Abbildung
     plt.tight_layout()
     return fig
@@ -439,22 +529,54 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     A = (player["Transformed.X"].iloc[0], player["Transformed.Y"].iloc[0])  # Spieler
     player_2_pos = (opponent["Transformed.X"].iloc[0], opponent["Transformed.Y"].iloc[0])  # Gegner
      
-    if object_id == 0:
-        field_width = 10.97  # Anpassen an deine Daten
-        B = (-field_width / 2, 11.89)
-        C = (field_width / 2, 11.89)
-        X = 11.89
-        Z = 1.5
-    else:
-        field_width = 10.97
-        B = (-field_width / 2, -11.89)
-        C = (field_width / 2, -11.89)
-        X = -11.89
-        Z = -1.5
+    if A[0] >= -2 and A[0] <= 2:
+    
+        if object_id == 0:
+            field_width = 10.97  # Anpassen an deine Daten
+            B = (-field_width / 2, 11.89)
+            C = (field_width / 2, 11.89)
+            X = 11.89
+            Z = 1.5
+        else:
+            field_width = 10.97
+            B = (-field_width / 2, -11.89)
+            C = (field_width / 2, -11.89)
+            X = -11.89
+            Z = -1.5
+            
+    elif A[0] < -2:
+        
+        if object_id == 0:
+            field_width = 8.23  # Anpassen an deine Daten
+            B = (-field_width / 2, 11.89)
+            C = ( 7.5, 11.89)
+            X = 11.89
+            Z = 1.5
+        else:
+            field_width = 8.23
+            B = (-field_width / 2, -11.89)
+            C = (7.5 , -11.89)
+            X = -11.89
+            Z = -1.5
+        
+    elif A[0] > 2:
+        
+        if object_id == 0:
+            field_width = 8.23  # Anpassen an deine Daten
+            B = (-7.5, 11.89)
+            C = (field_width / 2, 11.89)
+            X = 11.89
+            Z = 1.5
+        else:
+            field_width = 8.23
+            B = (-7.5 , -11.89)
+            C = (field_width / 2, -11.89)
+            X = -11.89
+            Z = -1.5
+    
 
     # Berechne den Punkt auf der Winkelhalbierenden
     D = calculate_intersection_point(A, B, C)
-
     
 
     # Tennisfeld zeichnen
@@ -510,11 +632,11 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     ax.scatter(player_2_pos[0], player_2_pos[1], color='orange', label="Spieler 2", zorder=5)
 
     # Färbe die Bereiche entlang der X-Achse (basierend auf D)
-    green_area = patches.Rectangle((D[0] - 2, X - Z), 4, Z, color='green', alpha=0.3)
-    yellow_area_left = patches.Rectangle((D[0] - 3, X - Z), 1, Z, color='yellow', alpha=0.3)
-    yellow_area_right = patches.Rectangle((D[0] + 2, X - Z), 1, Z, color='yellow', alpha=0.3)
-    red_area_left = patches.Rectangle((D[0] - 5, X - Z), 2, Z, color='red', alpha=0.3)
-    red_area_right = patches.Rectangle((D[0] + 3, X - Z), 2, Z, color='red', alpha=0.3)
+    green_area = patches.Rectangle((D[0] - 0.5, X - Z), 1, Z, color='green', alpha=0.3)
+    yellow_area_left = patches.Rectangle((D[0] - 0.5, X - Z), -1.5, Z, color='yellow', alpha=0.3)  
+    yellow_area_right = patches.Rectangle((D[0] + 0.5, X - Z), 1.5, Z, color='yellow', alpha=0.3)   
+    red_area_left = patches.Rectangle((D[0] - 2, X - Z), -3.5, Z, color='red', alpha=0.3)
+    red_area_right = patches.Rectangle((D[0] + 2, X - Z), 3.5, Z, color='red', alpha=0.3)
     
     ax.add_patch(green_area)
     ax.add_patch(yellow_area_left)
@@ -529,7 +651,7 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     ax.set_xlabel("X-Position (m)")
     ax.set_ylabel("Y-Position (m)")
     ax.legend()
-    plt.grid()
+    plt.grid(False)
     return fig
  
  
@@ -583,10 +705,9 @@ if page == "Gesamtübersicht":
     st.pyplot(fig)
     
     st.markdown("### Geschwindigkeit der Spieler")
-    fig_speed_0 = plot_speed_gesamt(csv_data, player_id=1)
+    fig_speed_0 = plot_speed_gesamt(csv_data, player_ids=[0, 1])
     st.pyplot(fig_speed_0)
-    fig_speed_1 = plot_speed_gesamt(csv_data, player_id=0)
-    st.pyplot(fig_speed_1)
+    
  
     # Kennzahlen berechnen
     st.markdown("### Kennzahlen für Spieler im gesamten Spiel")
@@ -656,11 +777,9 @@ elif page == "Game 1":
     st.pyplot(fig)
     
   # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
-    fig_speed_1 = plot_speed_per_game(csv_data, game="1", player_id=1, frame=selected_frame)
+    fig_speed_1 = plot_speed_per_game(csv_data, game="1", player_ids=[0, 1], frame=selected_frame)
     st.pyplot(fig_speed_1)
-    
-    fig_speed_2 = plot_speed_per_game(csv_data, game="1", player_id=0, frame=selected_frame)
-    st.pyplot(fig_speed_2)
+   
     
      # Kennzahlen berechnen
     st.markdown("### Kennzahlen für Spieler in Game 1")
