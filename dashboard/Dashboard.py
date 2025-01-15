@@ -374,7 +374,7 @@ def plot_speed_per_game(data, game, player_ids, frame):
     # Definiere Farben und Namen für die Spieler
     player_colors = {0: "red", 1: "blue"}  # Rot für Spieler 0, Blau für Spieler 1
     player_names = {0: "Adrian", 1: "Raphael"}  # Namen für die Spieler
-    marker_colors = {0: "black", 1: "white"}  # Markerfarben für die Spieler
+    marker_colors = {0: "black", 1: "green"}  # Markerfarben für die Spieler
 
     for player_id in player_ids:
         # Daten für den aktuellen Spieler filtern
@@ -419,7 +419,7 @@ def plot_speed_per_game(data, game, player_ids, frame):
     ax.set_xlabel("Frame", fontsize=12)
     ax.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
     ax.legend()
-    ax.grid(True)
+    ax.grid(False)
 
     # Anpassungen für die gesamte Abbildung
     plt.tight_layout()
@@ -471,7 +471,7 @@ def plot_speed_gesamt(data, player_ids):
     ax.set_xlabel("Frame", fontsize=12)
     ax.set_ylabel("Geschwindigkeit (m/s)", fontsize=12)
     ax.legend()
-    ax.grid(True)
+    ax.grid(False)
     
     # Anpassungen für die gesamte Abbildung
     plt.tight_layout()
@@ -505,7 +505,12 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     # Filtere Daten für das ausgewählte Spiel und Schläge
     game_data = data[data["Game"] == game]
     shots = game_data[game_data["Spieler schlägt"] == "Ja"]
- 
+    
+    player_colors = {0: "red", 1: "blue"}  # Rot für Spieler 0, Blau für Spieler 1
+    player_names = {0: "Adrian", 1: "Raphael"}  # Namen für die Spieler
+    
+    
+    
     # Prüfen, ob der Schlag-Index gültig ist
     if shot_index < 0 or shot_index >= len(shots):
         st.error(f"Ungültiger Schlag-Index: {shot_index}.")
@@ -516,7 +521,12 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     frame = current_shot["Frame"]
     object_id = current_shot["Object.ID"]  # Der schlagende Spieler
     opponent_id = 1 - object_id  # Der Gegner (umgekehrt)
- 
+    
+    # Bestimme Farbe und Name
+    color1 = player_colors.get(object_id, "black")  # Standardfarbe ist Schwarz
+    color2 = player_colors.get(opponent_id, "black")  # Standardfarbe ist Schwarz
+    name1 = player_names.get(object_id, f"Spieler {object_id}")  # Standardname
+    name2 = player_names.get(opponent_id, f"Spieler {opponent_id}")  # Standardname
     # Spieler- und Gegnerdaten für den aktuellen Frame
     player = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == object_id)]
     opponent = game_data[(game_data["Frame"] == frame) & (game_data["Object.ID"] == opponent_id)]
@@ -617,19 +627,19 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     ax.plot([0, 0], [-service_line_dist, service_line_dist], color='black', lw=2)
 
     # Zeichne das Dreieck
-    ax.plot([A[0], B[0]], [A[1], B[1]], 'b--', label="Seite AB")
-    ax.plot([A[0], C[0]], [A[1], C[1]], 'b--', label="Seite AC")
-    ax.plot([B[0], C[0]], [B[1], C[1]], 'k-', label="Seite BC")
+    ax.plot([A[0], B[0]], [A[1], B[1]], 'b--')
+    ax.plot([A[0], C[0]], [A[1], C[1]], 'b--')
+    ax.plot([B[0], C[0]], [B[1], C[1]], 'k-')
 
     # Zeichne die Winkelhalbierende
     ax.plot([A[0], D[0]], [A[1], D[1]], 'r-', label="Winkelhalbierende")
 
     # Zeichne den Punkt auf der Winkelhalbierenden
-    ax.scatter(D[0], D[1], color='red', label="Schnittpunkt D", zorder=5)
+    ax.scatter(D[0], D[1], color='green', label="Optimale Position", zorder=5)
 
     # Spielerpositionen
-    ax.scatter(A[0], A[1], color='blue', label="Spieler 1 (Punkt A)", zorder=5)
-    ax.scatter(player_2_pos[0], player_2_pos[1], color='orange', label="Spieler 2", zorder=5)
+    ax.scatter(A[0], A[1], color= color1, label=f"Position von {name1}", zorder=5)
+    ax.scatter(player_2_pos[0], player_2_pos[1], color=color2, label=f"Position von {name2}", zorder=5)
 
     # Färbe die Bereiche entlang der X-Achse (basierend auf D)
     green_area = patches.Rectangle((D[0] - 0.5, X - Z), 1, Z, color='green', alpha=0.3)
@@ -647,10 +657,11 @@ def visualize_winkelhalbierende_per_shot(data, game, shot_index):
     # Achsenbegrenzung und Titel
     ax.set_xlim(-width, width)
     ax.set_ylim((-length / 2) -3, (length / 2) + 3)
-    ax.set_title(f"Winkelhalbierende und Spielerpositionen bei t = ")
+    ax.set_title(f"Winkelhalbierende und Spielerpositionen bei Schlag {shot_index} in Game {game}") 
     ax.set_xlabel("X-Position (m)")
     ax.set_ylabel("Y-Position (m)")
     ax.legend()
+    plt.axis('off')
     plt.grid(False)
     return fig
  
@@ -684,7 +695,7 @@ if page == "Gesamtübersicht":
         text-align: center;
         font-family: Arial, sans-serif;
         font-size: 14px; margin-top: 20px;">
-        <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px; word-spacing: 200px;">Punktestand Set Punkte</div>
+        <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px; word-spacing: 200px;">Punktestand Satz Punkte</div>
         <div style="display: flex; justify-content: space-between;">
             <div style="flex: 1; text-align: left;">{players[0]}</div>
             <div style="flex: 1; text-align: center;">{sets[0]}</div>
@@ -710,7 +721,7 @@ if page == "Gesamtübersicht":
     
  
     # Kennzahlen berechnen
-    st.markdown("### Kennzahlen für Spieler im gesamten Spiel")
+    st.markdown("### Kennzahlen für die Spieler im gesamten Spiel")
     metrics_table_transposed = calculate_metrics_transposed(csv_data)
     st.table(metrics_table_transposed)
    
@@ -766,6 +777,7 @@ elif page == "Game 1":
     st.markdown(score_html, unsafe_allow_html=True)
     
     # Winkelhalbierende für den ausgewählten Schlag visualisieren
+    st.markdown("### Optimale Postion bei einem Schlag in Game 1")
     fig_wink_1 = visualize_winkelhalbierende_per_shot(csv_data, game="1", shot_index=selected_shot)
     if fig_wink_1:
         st.pyplot(fig_wink_1)
@@ -777,6 +789,7 @@ elif page == "Game 1":
     st.pyplot(fig)
     
   # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
+    st.markdown("### Geschwindigkeit der Spieler in Game 1")
     fig_speed_1 = plot_speed_per_game(csv_data, game="1", player_ids=[0, 1], frame=selected_frame)
     st.pyplot(fig_speed_1)
    
@@ -837,6 +850,7 @@ elif page == "Game 2":
     st.markdown(score_html, unsafe_allow_html=True)
     
     # Winkelhalbierende für den ausgewählten Schlag visualisieren
+    st.markdown("### Optimale Postion bei einem Schlag in Game 2")
     fig_wink_1 = visualize_winkelhalbierende_per_shot(csv_data, game="2", shot_index=selected_shot)
     if fig_wink_1:
         st.pyplot(fig_wink_1)
@@ -848,10 +862,8 @@ elif page == "Game 2":
     st.pyplot(fig)
     
   # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
-    fig_speed_1 = plot_speed_per_game(csv_data, game="2", player_id=1, frame=selected_frame)
-    st.pyplot(fig_speed_1)
-    
-    fig_speed_2 = plot_speed_per_game(csv_data, game="2", player_id=0, frame=selected_frame)
+    st.markdown("### Geschwindigkeit der Spieler in Game 2")
+    fig_speed_2 = plot_speed_per_game(csv_data, game="2", player_ids=[0, 1], frame=selected_frame)
     st.pyplot(fig_speed_2)
     
      # Kennzahlen berechnen
@@ -904,10 +916,12 @@ elif page == "Game 3":
         </div>
     </div>
     """
+    
     st.markdown(score_html, unsafe_allow_html=True)
    
     
     # Winkelhalbierende für den ausgewählten Schlag visualisieren
+    st.markdown("### Optimale Postion bei einem Schlag in Game 3")
     fig_wink_3 = visualize_winkelhalbierende_per_shot(csv_data, game="3", shot_index=selected_shot)
     if fig_wink_3:
         st.pyplot(fig_wink_3)
@@ -921,11 +935,9 @@ elif page == "Game 3":
     
 
     # Geschwindigkeit über Zeit für zwei Spieler nebeneinander
-    fig_speed_1 = plot_speed_per_game(csv_data, game="3", player_id=1, frame=selected_frame)
-    st.pyplot(fig_speed_1)
-    
-    fig_speed_2 = plot_speed_per_game(csv_data, game="3", player_id=0, frame=selected_frame)
-    st.pyplot(fig_speed_2)
+    st.markdown("### Geschwindigkeit der Spieler in Game 3")
+    fig_speed_3 = plot_speed_per_game(csv_data, game="3", player_ids=[0, 1], frame=selected_frame)
+    st.pyplot(fig_speed_3)
     
     st.markdown("### Kennzahlen für Spieler in Game 3")
     metrics_table_transposed = calculate_metrics_transposed_games(csv_data, "3")
