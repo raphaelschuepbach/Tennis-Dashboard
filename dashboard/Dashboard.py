@@ -9,7 +9,7 @@ import math
 import numpy as np
  
 # Daten laden
-csv_data = pd.read_csv("csv.csv")
+csv_data = pd.read_csv("Match_Daten.csv")
    
 # Punktestand-Funktion
 players = ["Raphael", "Adrian"]
